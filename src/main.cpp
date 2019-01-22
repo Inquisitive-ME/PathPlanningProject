@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+#include "spline.h"
 
 using namespace std;
 
@@ -202,6 +203,11 @@ int main() {
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
+
+    // TODO these should get defined elsewhere
+    int lane = 1;
+    unsigned int prevPathLength = 0;
+
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -239,13 +245,214 @@ int main() {
 
           	json msgJson;
 
-          	vector<double> next_x_vals;
-          	vector<double> next_y_vals;
+          	prevPathLength = previous_path_x.size();
+          	cout << "PrevPathLength = " << prevPathLength << endl;
+
+            vector<double> next_x_vals;
+            vector<double> next_y_vals;
+
+          	// do we need ref_x, ref_y, ref_yaw?
+          	double ref_x;
+          	double ref_y;
+          	double ref_yaw;
+
+          	double current_car_s = car_s;
+          	double predicted_velocity = car_speed;
+
+          	// get points from previous path or cars location to use as starting point for new path
+          	if(prevPathLength < 2)
+            {
+          	  // use car as reference
+          	  ref_x = car_x;
+          	  ref_y = car_y;
+          	  ref_yaw = deg2rad(car_yaw);
+
+          	  // use cars position and get two previous points tangent to the car
+          	  double prev_car_x = car_x - cos(car_yaw);
+          	  double prev_car_y = car_y - sin(car_yaw);
+
+          	  next_x_vals.push_back(prev_car_x);
+          	  next_x_vals.push_back(car_x);
+
+          	  next_y_vals.push_back(prev_car_y);
+          	  next_y_vals.push_back(car_y);
+            }
+          	else
+            {
+              // use previous path as reference
+              ref_x = previous_path_x[prevPathLength - 1];
+              ref_y = previous_path_y[prevPathLength - 1];
+
+              double prev_ref_x = previous_path_x[prevPathLength - 2];
+              double prev_ref_y = previous_path_y[prevPathLength - 2];
+
+              ref_yaw = atan2(ref_y - prev_ref_y, ref_x - prev_ref_x);
+
+              next_x_vals.push_back(prev_ref_x);
+              next_x_vals.push_back(ref_x);
+
+              next_y_vals.push_back(prev_ref_y);
+              next_y_vals.push_back(ref_y);
+
+              predicted_velocity = sqrt(pow(ref_x - prev_ref_x, 2) + pow(ref_y - prev_ref_y, 2)) / 0.02;
+
+              // set car_s because we are adding previous path so want to start prediction after these values
+              car_s = end_path_s;
+            }
+
+          	// in Frenet add evenly 30m spaced points ahead of the starting referecne this smooths out predicted spline
+
+          	for(int i = 1; i <= 5; i++)
+            {
+          	  vector<double> next_wp = getXY(car_s+20*i, (2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          	  next_x_vals.push_back(next_wp[0]);
+          	  next_y_vals.push_back(next_wp[1]);
+            }
+
+            for (int i = 0; i < next_x_vals.size(); i++)
+            {
+              double shift_x = next_x_vals[i] - ref_x;
+              double shift_y = next_y_vals[i] - ref_y;
+
+              next_x_vals[i] = (shift_x * cos(0-ref_yaw) - shift_y*sin(0-ref_yaw));
+              next_y_vals[i] = (shift_x * sin(0-ref_yaw) + shift_y*cos(0-ref_yaw));
+            }
+
+            tk::spline s;
+
+            s.set_points(next_x_vals, next_y_vals);
+
+            vector<double> x_sendPoints;
+            vector<double> y_sendPoints;
+
+            for(int i =0; i< prevPathLength; i++)
+            {
+              x_sendPoints.push_back(previous_path_x[i]);
+              y_sendPoints.push_back(previous_path_y[i]);
+            }
+
+            double ref_vel = 40/2.24;
+
+            // get target final point of path
+            double target_x = 30;
+            double target_y = s(target_x);
+            // needs to be target - ref if we don't transform
+            double target_dist = sqrt(pow(target_x,2) + pow(target_y,2));
+
+            double x_add_on = 0;
+
+            // change Number of points to have constant spacing per distance
+            float timestep = 0.02;
+
+            float accelMax = 5;
+
+            double path_s = end_path_s;
+
+            //predict out .5 s
+            for(int i = 0; i < 20 - prevPathLength; i++)
+            {
+              if(predicted_velocity < ref_vel)
+              {
+                predicted_velocity = min(ref_vel, predicted_velocity + (accelMax * timestep));
+              }
+              else if(predicted_velocity > ref_vel)
+              {
+                predicted_velocity = max(ref_vel, predicted_velocity - (accelMax * timestep));
+              }
+
+              double x_point = x_add_on + predicted_velocity * timestep;
+              double y_point = s(x_point);
+
+              x_add_on = x_point;
+
+              double x_ref = x_point;
+              double y_ref = y_point;
+
+              // rotate back to normal
+              x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
+              y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
+
+              x_point += ref_x;
+              y_point += ref_y;
+
+              x_sendPoints.push_back(x_point);
+              y_sendPoints.push_back(y_point);
+            }
+/*
+            for (int i = 1; i<=20 - prevPathLength; i++)
+            {
+              double N = (target_dist/(0.02*ref_vel/2.24));
+
+              double x_point = x_add_on+(target_x)/N;
+              double y_point = s(x_point);
+
+              x_add_on = x_point;
+
+              double x_ref = x_point;
+              double y_ref = y_point;
+
+              // rotate back to normal
+              x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
+              y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
+
+              x_point += ref_x;
+              y_point += ref_y;
+
+             x_sendPoints.push_back(x_point);
+             y_sendPoints.push_back(y_point);
+
+            }
+          double dist_inc = 0.4;
+          for(int i = 0; i<50; i++)
+					{
+          	double next_s = car_s + (i+1)*dist_inc;
+          	double next_d = 6;
+
+          	vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+          	next_x_vals.push_back(xy[0]);
+          	next_y_vals.push_back(xy[1]);
+					}
+          double pos_x;
+          double pos_y;
+          double angle;
+          int path_size = previous_path_x.size();
+
+          for(int i = 0; i < path_size; i++)
+          {
+            next_x_vals.push_back(previous_path_x[i]);
+            next_y_vals.push_back(previous_path_y[i]);
+          }
+
+          if(path_size == 0)
+          {
+            pos_x = car_x;
+            pos_y = car_y;
+            angle = deg2rad(car_yaw);
+          }
+          else
+          {
+            pos_x = previous_path_x[path_size-1];
+            pos_y = previous_path_y[path_size-1];
+
+            double pos_x2 = previous_path_x[path_size-2];
+            double pos_y2 = previous_path_y[path_size-2];
+            angle = atan2(pos_y-pos_y2,pos_x-pos_x2);
+          }
+
+          double dist_inc = 0.5;
+          for(int i = 0; i < 50-path_size; i++)
+          {
+            next_x_vals.push_back(pos_x+(dist_inc)*cos(angle+(i+1)*(pi()/100)));
+            next_y_vals.push_back(pos_y+(dist_inc)*sin(angle+(i+1)*(pi()/100)));
+            pos_x += (dist_inc)*cos(angle+(i+1)*(pi()/100));
+            pos_y += (dist_inc)*sin(angle+(i+1)*(pi()/100));
+          }
 
 
+*/
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-          	msgJson["next_x"] = next_x_vals;
-          	msgJson["next_y"] = next_y_vals;
+          	msgJson["next_x"] = x_sendPoints;
+          	msgJson["next_y"] = y_sendPoints;
 
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
