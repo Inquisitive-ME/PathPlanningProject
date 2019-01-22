@@ -10,15 +10,12 @@
 #include "json.hpp"
 #include "spline.h"
 
+#include "vehicle.h"
+
 using namespace std;
 
 // for convenience
 using json = nlohmann::json;
-
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -136,33 +133,7 @@ vector<double> getFrenet(double x, double y, double theta, const vector<double> 
 
 }
 
-// Transform from Frenet s,d coordinates to Cartesian x,y
-vector<double> getXY(double s, double d, const vector<double> &maps_s, const vector<double> &maps_x, const vector<double> &maps_y)
-{
-	int prev_wp = -1;
 
-	while(s > maps_s[prev_wp+1] && (prev_wp < (int)(maps_s.size()-1) ))
-	{
-		prev_wp++;
-	}
-
-	int wp2 = (prev_wp+1)%maps_x.size();
-
-	double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),(maps_x[wp2]-maps_x[prev_wp]));
-	// the x,y,s along the segment
-	double seg_s = (s-maps_s[prev_wp]);
-
-	double seg_x = maps_x[prev_wp]+seg_s*cos(heading);
-	double seg_y = maps_y[prev_wp]+seg_s*sin(heading);
-
-	double perp_heading = heading-pi()/2;
-
-	double x = seg_x + d*cos(perp_heading);
-	double y = seg_y + d*sin(perp_heading);
-
-	return {x,y};
-
-}
 
 int main() {
   uWS::Hub h;
@@ -201,12 +172,14 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-                     uWS::OpCode opCode) {
+  float targetSpeed_mps = 40/2.24;
+  float goalLane = 1;
+  float minFollowDistance = 5;
 
-    // TODO these should get defined elsewhere
-    int lane = 1;
-    unsigned int prevPathLength = 0;
+  Vehicle myCar(targetSpeed_mps, goalLane, minFollowDistance, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+  h.onMessage([&myCar, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                     uWS::OpCode opCode) {
 
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -245,139 +218,19 @@ int main() {
 
           	json msgJson;
 
-          	prevPathLength = previous_path_x.size();
-          	cout << "PrevPathLength = " << prevPathLength << endl;
 
-            vector<double> next_x_vals;
-            vector<double> next_y_vals;
+            myCar.UpdateFromPath(previous_path_x, previous_path_y, end_path_s, car_x, car_y, car_s, car_d, car_yaw, car_speed);
 
-          	// do we need ref_x, ref_y, ref_yaw?
-          	double ref_x;
-          	double ref_y;
-          	double ref_yaw;
-
-          	double current_car_s = car_s;
-          	double predicted_velocity = car_speed;
-
-          	// get points from previous path or cars location to use as starting point for new path
-          	if(prevPathLength < 2)
-            {
-          	  // use car as reference
-          	  ref_x = car_x;
-          	  ref_y = car_y;
-          	  ref_yaw = deg2rad(car_yaw);
-
-          	  // use cars position and get two previous points tangent to the car
-          	  double prev_car_x = car_x - cos(car_yaw);
-          	  double prev_car_y = car_y - sin(car_yaw);
-
-          	  next_x_vals.push_back(prev_car_x);
-          	  next_x_vals.push_back(car_x);
-
-          	  next_y_vals.push_back(prev_car_y);
-          	  next_y_vals.push_back(car_y);
-            }
-          	else
-            {
-              // use previous path as reference
-              ref_x = previous_path_x[prevPathLength - 1];
-              ref_y = previous_path_y[prevPathLength - 1];
-
-              double prev_ref_x = previous_path_x[prevPathLength - 2];
-              double prev_ref_y = previous_path_y[prevPathLength - 2];
-
-              ref_yaw = atan2(ref_y - prev_ref_y, ref_x - prev_ref_x);
-
-              next_x_vals.push_back(prev_ref_x);
-              next_x_vals.push_back(ref_x);
-
-              next_y_vals.push_back(prev_ref_y);
-              next_y_vals.push_back(ref_y);
-
-              predicted_velocity = sqrt(pow(ref_x - prev_ref_x, 2) + pow(ref_y - prev_ref_y, 2)) / 0.02;
-
-              // set car_s because we are adding previous path so want to start prediction after these values
-              car_s = end_path_s;
-            }
-
-          	// in Frenet add evenly 30m spaced points ahead of the starting referecne this smooths out predicted spline
-
-          	for(int i = 1; i <= 5; i++)
-            {
-          	  vector<double> next_wp = getXY(car_s+20*i, (2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          	  next_x_vals.push_back(next_wp[0]);
-          	  next_y_vals.push_back(next_wp[1]);
-            }
-
-            for (int i = 0; i < next_x_vals.size(); i++)
-            {
-              double shift_x = next_x_vals[i] - ref_x;
-              double shift_y = next_y_vals[i] - ref_y;
-
-              next_x_vals[i] = (shift_x * cos(0-ref_yaw) - shift_y*sin(0-ref_yaw));
-              next_y_vals[i] = (shift_x * sin(0-ref_yaw) + shift_y*cos(0-ref_yaw));
-            }
-
-            tk::spline s;
-
-            s.set_points(next_x_vals, next_y_vals);
+            points SendPoints;
+            // TODO just add previous points here
 
             vector<double> x_sendPoints;
             vector<double> y_sendPoints;
 
-            for(int i =0; i< prevPathLength; i++)
-            {
-              x_sendPoints.push_back(previous_path_x[i]);
-              y_sendPoints.push_back(previous_path_y[i]);
-            }
+            SendPoints = myCar.getPredictedPath(sensor_fusion);
+            x_sendPoints = SendPoints.x;
+            y_sendPoints = SendPoints.y;
 
-            double ref_vel = 40/2.24;
-
-            // get target final point of path
-            double target_x = 30;
-            double target_y = s(target_x);
-            // needs to be target - ref if we don't transform
-            double target_dist = sqrt(pow(target_x,2) + pow(target_y,2));
-
-            double x_add_on = 0;
-
-            // change Number of points to have constant spacing per distance
-            float timestep = 0.02;
-
-            float accelMax = 5;
-
-            double path_s = end_path_s;
-
-            //predict out .5 s
-            for(int i = 0; i < 20 - prevPathLength; i++)
-            {
-              if(predicted_velocity < ref_vel)
-              {
-                predicted_velocity = min(ref_vel, predicted_velocity + (accelMax * timestep));
-              }
-              else if(predicted_velocity > ref_vel)
-              {
-                predicted_velocity = max(ref_vel, predicted_velocity - (accelMax * timestep));
-              }
-
-              double x_point = x_add_on + predicted_velocity * timestep;
-              double y_point = s(x_point);
-
-              x_add_on = x_point;
-
-              double x_ref = x_point;
-              double y_ref = y_point;
-
-              // rotate back to normal
-              x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
-              y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
-
-              x_point += ref_x;
-              y_point += ref_y;
-
-              x_sendPoints.push_back(x_point);
-              y_sendPoints.push_back(y_point);
-            }
 /*
             for (int i = 1; i<=20 - prevPathLength; i++)
             {

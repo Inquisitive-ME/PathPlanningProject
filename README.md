@@ -69,6 +69,23 @@ the path has processed since last time.
 
 A really helpful resource for doing this project and creating smooth trajectories was using http://kluge.in-chemnitz.de/opensource/spline/, the spline function is in a single hearder file is really easy to use.
 
+#Implementation
+##General
+Each timestep we get the previous path that has not been followed from the simulator. A difficult concept for
+me was determine what to do with this path. I had troubles trying to create a new path mainly because the car would
+travel on the previous path during calculations of the new path. Ultimatley I decided it was easiest to just continue 
+using the previous path and start the new calculations from the end of this path. This obviously has issues, for example
+if you sense something in the new timestep that interferes with the previous path then you would not react to it,
+because you are starting from the end of that path. To mitigate this risk I tried to use a minimum amount of points ahead.
+With the current implementation of 25 points the vehicle will be able to react in at least 500 ms. Which is roughly 11 m
+and too far for any real world implementation.
+
+## Vehicle class
+Created a vehicle class to store the vehicle state. The vehicle class is created with some parameters and then updated
+every time step with the previous path and the current position of the car.
+
+
+
 ---
 
 ## Dependencies

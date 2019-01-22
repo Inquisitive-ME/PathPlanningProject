@@ -13,6 +13,8 @@
 
 using namespace std;
 
+constexpr double pi() { return M_PI; }
+
 struct points{
   vector<double> x;
   vector<double> y;
@@ -38,8 +40,6 @@ public:
 
   float a;
 
-  float mTargetSpeed;
-
   int lanes_available;
 
   string state;
@@ -47,12 +47,23 @@ public:
   /**
   * Constructor
   */
-  void Vehicle(float targetSpeed, float goalLane, float minFollowDistance, float maxLane = 12, float minLane 0, float maxAccel = 10), float timeStep = 0.02);
+  Vehicle();
+
+  Vehicle(float targetSpeed, float goalLane, float minFollowDistance,
+               vector<double> &map_waypoints_s, vector<double> &map_waypoints_x, vector<double> &map_waypoints_y,
+               float laneWidth = 4, float maxLane = 12, float minLane = 0, float maxAccel = 10,
+               float timeStep = 0.02, int numTimeStepsToPredict = 25);
 
   /**
   * Destructor
   */
   virtual ~Vehicle();
+
+  void UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s,
+                               double car_x, double car_y, double car_s, double car_d, double car_yaw, double Velocity);
+
+  points getPredictedPath(vector<vector<double>> sensor_fusion);
+
 
   void InitializePosition(double X, double Y, double S, double D, double Yaw, double Velocity);
 
@@ -80,7 +91,7 @@ public:
 
   bool get_vehicle_behind(map<int, vector<Vehicle>> predictions, int lane, Vehicle & rVehicle);
 
-  bool get_vehicle_ahead(map<int, vector<Vehicle>> predictions, int lane, Vehicle & rVehicle);
+  bool get_vehicle_ahead(vector<vector<double>> sensor_fusion, Vehicle & rVehicle);
 
   vector<Vehicle> generate_predictions(int horizon=2);
 
@@ -88,13 +99,20 @@ public:
 
 
 private:
-  float mTargetSpeed_mph;
+  float mGoalSpeed_mps;
+  float mTargetSpeed_mps;
+  //TODO Use these
   float mMaxLane;
   float mMinLane;
+  float mLaneWidth;
   float mDesiredLane;
   float mMaxAcceleration_mpss;
   float mMinFollowDistance_m;
   float mTimeStep;
+  int mNumTimeStepsToPredict;
+
+  vector<double> mPredictedPath_x;
+  vector<double> mPredictedPath_y;
 
   // Vehicle's localization Data
   double mX;
@@ -104,6 +122,22 @@ private:
   double mYaw;
   double mVelocity;
   double mA;
+
+  // Vehicles predicted localization Data
+  double mPredictionX;
+  double mPredictionY;
+  double mPredictionS;
+  double mPredictionD;
+  double mPredictionYaw;
+  double mPredictionVelocity;
+  double mPredictionAcceleration;
+  int mFuturePredictionTimeSteps;
+
+  points mPathPoints;
+  vector<double> mmap_waypoints_x;
+  vector<double> mmap_waypoints_y;
+  vector<double> mmap_waypoints_s;
+
 
 };
 
