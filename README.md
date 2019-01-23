@@ -84,7 +84,15 @@ and too far for any real world implementation.
 Created a vehicle class to store the vehicle state. The vehicle class is created with some parameters and then updated
 every time step with the previous path and the current position of the car.
 
-
+## Going straight
+For driving straight, we find the speed of the car in front of us, and predict given our cars speed and the speed of
+the car in front of us weather we will get to an unsafe traveling distance. If we will, then we slow down to the speed
+of the car in front of us. What I found when implementing this is that the siumulator does not give an accurate speed
+for the car in front, so the safety distance needs to be a certain length or we will collide trying to match the in accurate
+velocity. I added in logic to go 90% of the speed of the car in front of us if we are in the unsafe zone to prevent collisions
+There are currently no safety procedures implemented if we would have to exceed the comfortable acceleration to prevent
+a collision.
+ 
 
 ---
 

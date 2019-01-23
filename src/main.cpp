@@ -172,9 +172,9 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  float targetSpeed_mps = 40/2.24;
+  float targetSpeed_mps = 49/2.24;
   float goalLane = 1;
-  float minFollowDistance = 5;
+  float minFollowDistance = 15;
 
   Vehicle myCar(targetSpeed_mps, goalLane, minFollowDistance, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
@@ -231,78 +231,6 @@ int main() {
             x_sendPoints = SendPoints.x;
             y_sendPoints = SendPoints.y;
 
-/*
-            for (int i = 1; i<=20 - prevPathLength; i++)
-            {
-              double N = (target_dist/(0.02*ref_vel/2.24));
-
-              double x_point = x_add_on+(target_x)/N;
-              double y_point = s(x_point);
-
-              x_add_on = x_point;
-
-              double x_ref = x_point;
-              double y_ref = y_point;
-
-              // rotate back to normal
-              x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
-              y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
-
-              x_point += ref_x;
-              y_point += ref_y;
-
-             x_sendPoints.push_back(x_point);
-             y_sendPoints.push_back(y_point);
-
-            }
-          double dist_inc = 0.4;
-          for(int i = 0; i<50; i++)
-					{
-          	double next_s = car_s + (i+1)*dist_inc;
-          	double next_d = 6;
-
-          	vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          	next_x_vals.push_back(xy[0]);
-          	next_y_vals.push_back(xy[1]);
-					}
-          double pos_x;
-          double pos_y;
-          double angle;
-          int path_size = previous_path_x.size();
-
-          for(int i = 0; i < path_size; i++)
-          {
-            next_x_vals.push_back(previous_path_x[i]);
-            next_y_vals.push_back(previous_path_y[i]);
-          }
-
-          if(path_size == 0)
-          {
-            pos_x = car_x;
-            pos_y = car_y;
-            angle = deg2rad(car_yaw);
-          }
-          else
-          {
-            pos_x = previous_path_x[path_size-1];
-            pos_y = previous_path_y[path_size-1];
-
-            double pos_x2 = previous_path_x[path_size-2];
-            double pos_y2 = previous_path_y[path_size-2];
-            angle = atan2(pos_y-pos_y2,pos_x-pos_x2);
-          }
-
-          double dist_inc = 0.5;
-          for(int i = 0; i < 50-path_size; i++)
-          {
-            next_x_vals.push_back(pos_x+(dist_inc)*cos(angle+(i+1)*(pi()/100)));
-            next_y_vals.push_back(pos_y+(dist_inc)*sin(angle+(i+1)*(pi()/100)));
-            pos_x += (dist_inc)*cos(angle+(i+1)*(pi()/100));
-            pos_y += (dist_inc)*sin(angle+(i+1)*(pi()/100));
-          }
-
-
-*/
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
           	msgJson["next_x"] = x_sendPoints;
           	msgJson["next_y"] = y_sendPoints;

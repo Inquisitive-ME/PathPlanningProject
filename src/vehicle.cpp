@@ -96,6 +96,9 @@ Vehicle::Vehicle(float targetSpeed, float goalLane, float minFollowDistance, vec
 void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s,
                              double car_x, double car_y, double car_s, double car_d, double car_yaw, double Velocity)
 {
+  static unsigned int counter = 0;
+  cout << " Update from Path number " << counter << endl;
+  counter++;
 
   // clear
   mPredictedPath_x.clear();
@@ -105,7 +108,7 @@ void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> prev
 
   double prevPathLength = previous_path_x.size();
   mFuturePredictionTimeSteps = (mNumTimeStepsToPredict - prevPathLength);
-  cout << "PrevPathLength = " << prevPathLength << endl;
+  // cout << "PrevPathLength = " << prevPathLength << endl;
   if(prevPathLength < 2)
   {
     // use car as reference
@@ -146,6 +149,7 @@ void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> prev
     // set state of car
     mX = car_x;
     mY = car_y;
+    mS = car_s;
     mYaw = deg2rad(car_yaw);
     mA = (mVelocity - Velocity)/mTimeStep;
     mVelocity = Velocity;
@@ -189,46 +193,47 @@ void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> prev
 
 Vehicle::~Vehicle() {}
 
+double Vehicle::getLocationPrediction(double predictionTime)
+{
+  return (mPredictionS + mPredictionVelocity * predictionTime + 0.5 * mPredictionAcceleration * predictionTime * predictionTime);
+}
+
 points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
 {
-  int timeStepsToMatchSpeed = 0;
   // Check if we can stay in current lane
   Vehicle inFrontVehicle;
 
   if(get_vehicle_ahead(sensor_fusion, inFrontVehicle))
   {
-    // Check if we will collide
-    if(inFrontVehicle.mPredictionS + inFrontVehicle.mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep
-        <= mPredictionS + mMinFollowDistance_m + mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep)
+    // Check if we are at unsafe distance
+    // Simulator doesn't seem to give correct velocity for other cars so if we get within the unsafe driving distance
+    // reduce to 90% of the other vehicles speed until we are outside of unsafe driving distance.
+    if(inFrontVehicle.mS <= mMinFollowDistance_m + mS)
     {
-      cout << "DEBUG" << endl;
-      cout << "inFrontVehicle.mPredictionS = " << inFrontVehicle.mPredictionS  << endl;
-      cout << "inFrontVehicle.mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep = " << inFrontVehicle.mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep << endl;
-      cout << "mPredictionS = " << mPredictionS << endl;
-      cout <<  "mMinFollowDistance_m + mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep = "  <<  mMinFollowDistance_m + mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep << endl;
-
-      cout << "mPredictionVelocity = " << mPredictionVelocity << endl;
-      cout << "inFrontVehicle.mVelocity = " << inFrontVehicle.mVelocity << endl;
-      cout << "mMaxAcceleration_mpss  = " << mMaxAcceleration_mpss << endl;
-      cout << endl;
-
+      cout << endl << "Left Lane gap of " << getLeftGap(sensor_fusion)[0] << "m" << endl << endl;
+      mTargetSpeed_mps = inFrontVehicle.mVelocity * 0.9;
+    }
+    // Check if we will collide
+    else if(inFrontVehicle.getLocationPrediction(mFuturePredictionTimeSteps * mTimeStep)
+        <= getLocationPrediction(mFuturePredictionTimeSteps*mTimeStep) + mMinFollowDistance_m)
+    {
+      cout << endl << "Left Lane gap of " << getLeftGap(sensor_fusion)[0] << "m" << endl << endl;
       // Will get within unsafe following distance
       mTargetSpeed_mps = inFrontVehicle.mVelocity;
-      timeStepsToMatchSpeed = (mPredictionVelocity - inFrontVehicle.mVelocity)/mMaxAcceleration_mpss + 0.5;
-      cout << "Slowing Down TargetSpeed = " << mTargetSpeed_mps << " mps time steps to match = " << timeStepsToMatchSpeed;
+      // cout << "Slowing Down TargetSpeed = " << mTargetSpeed_mps << " mps" << endl;
 
-      if(mPredictionS + mPredictionVelocity * timeStepsToMatchSpeed * mTimeStep >
-      inFrontVehicle.mPredictionS + inFrontVehicle.mPredictionVelocity * mFuturePredictionTimeSteps * mTimeStep + mMinFollowDistance_m)
+      if(getLocationPrediction(mFuturePredictionTimeSteps*mTimeStep) >
+      inFrontVehicle.getLocationPrediction(mFuturePredictionTimeSteps*mTimeStep))
       {
-        cout << "Predicting violation of min follow distance" << endl;
+        cout <<  endl << "Predicting crash" << endl << endl;
       }
     }
     else
     {
       // found vehicle but not too close
-      if (mTargetSpeed_mps <= mGoalSpeed_mps)
+      if (mTargetSpeed_mps < mGoalSpeed_mps)
       {
-        mTargetSpeed_mps = min(mMaxAcceleration_mpss * mFuturePredictionTimeSteps * mTimeStep, mGoalSpeed_mps);
+        mTargetSpeed_mps = max(mPredictionVelocity +mMaxAcceleration_mpss * mFuturePredictionTimeSteps * mTimeStep,(double) mGoalSpeed_mps);
       }
     }
   }
@@ -258,17 +263,19 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
   s.set_points(mPredictedPath_x, mPredictedPath_y);
 
 
-
   //predict out .5 s
   double x_add_on = 0;
   for(int i = 0; i < mFuturePredictionTimeSteps; i++)
   {
-    if(mPredictionVelocity < mTargetSpeed_mps && i > timeStepsToMatchSpeed)
+    if(mPredictionVelocity < mTargetSpeed_mps)
     {
+      // cout << "Increase velocity current = " << mPredictionVelocity << "m/s";
       mPredictionVelocity = min((double)mTargetSpeed_mps, (mPredictionVelocity + (mMaxAcceleration_mpss * mTimeStep)));
+      // cout << "Next Desired velocity = " << mPredictionVelocity << "m/s" << endl;
     }
-    else if(mPredictionVelocity > mTargetSpeed_mps && i > timeStepsToMatchSpeed)
+    else if(mPredictionVelocity > mTargetSpeed_mps)
     {
+      // cout << "Decrease velocity current = " << mPredictionVelocity << "m/s" << endl;
       mPredictionVelocity = max((double)mTargetSpeed_mps, mPredictionVelocity - (mMaxAcceleration_mpss * mTimeStep));
     }
 
@@ -290,9 +297,65 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
     mPathPoints.x.push_back(x_point);
     mPathPoints.y.push_back(y_point);
   }
+
   return mPathPoints;
 }
 
+vector<double> Vehicle::getLeftGap(vector<vector<double>> sensor_fusion)
+{
+
+  double predictionTime = (mNumTimeStepsToPredict - mFuturePredictionTimeSteps) * mTimeStep; // This is the time to the front of the last predicted path
+
+  double distanceClosestCarInFront = 99999;
+  double predictedDistanceCarInFront = 0;
+
+  double distanceClosestCarBehind = -99999;
+  double predictedDistanceCarBehind = 0;
+  // Loop through all Vehicles in sensor_fusion
+  // because Udacity doesn't feel this is needed in the code
+  // sensor_fusion is
+  // [0] car's unique ID,
+  // [1] car's x position in map coordinates,
+  // [2] car's y position in map coordinates,
+  // [3] car's x velocity in m/s,
+  // [4] car's y velocity in m/s,
+  // [5] car's s position in frenet coordinates,
+  // [6] car's d position in frenet coordinates.
+
+  for (int i =0; i < sensor_fusion.size(); i++)
+  {
+    float d = sensor_fusion[i][6];
+    float s = sensor_fusion[i][5];
+    if( (d < (mD + 4 + mLaneWidth/2)) && (d> (mD +4 - mLaneWidth/2)) && (s < mS +200) && (s > mS - 200))
+    {
+      double velocity = sqrt(pow(sensor_fusion[i][3], 2) + pow(sensor_fusion[i][4], 2));
+      double carDistance = s-mS;
+      if (carDistance > 0)
+      {
+        if(distanceClosestCarInFront > carDistance)
+        {
+          distanceClosestCarInFront = carDistance;
+          predictedDistanceCarInFront = velocity * predictionTime + s;
+        }
+      }
+      else if (carDistance < 0)
+      {
+        if(distanceClosestCarBehind < carDistance)
+        {
+          distanceClosestCarBehind = carDistance;
+          predictedDistanceCarBehind = velocity * predictionTime + s;
+        }
+      }
+      }
+    }
+
+  //TODO handle only getting one car in front or one car behind
+  //TODO really need to optimize based on distance of car in front as well
+  return {distanceClosestCarInFront - distanceClosestCarBehind, predictedDistanceCarInFront - predictedDistanceCarBehind};
+
+
+
+}
 bool Vehicle::get_vehicle_ahead(vector<vector<double>> sensor_fusion, Vehicle & rVehicle) {
   /*
   Returns a true if a vehicle is found ahead of the current vehicle, false otherwise. The passed reference
@@ -320,22 +383,17 @@ bool Vehicle::get_vehicle_ahead(vector<vector<double>> sensor_fusion, Vehicle & 
     float s = sensor_fusion[i][5];
     if( (d < (mD + mLaneWidth/2)) && (d> (mD - mLaneWidth/2)) && (mS < s))
     {
-      float velocity = sqrt(pow(sensor_fusion[i][3], 2) + pow(sensor_fusion[i][4], 2));
+      double velocity = sqrt(pow(sensor_fusion[i][3], 2) + pow(sensor_fusion[i][4], 2));
       if (found_vehicle)
       {
-        cout << "ERROR Found two vehicles in same lane need to add which one is closer" << endl;
-        if( (mPredictionS - rVehicle.mPredictionS) < mPredictionS - (s + velocity * predictionTime) )
+        if( (rVehicle.mPredictionS - mPredictionS) < ((s + velocity * predictionTime) -mPredictionS) )
         {
-          cout << "Skipped duplicate vehicle" << endl;
           continue;
-        }
-        else
-        {
-          cout << "Replacing with duplicate vehicle" << endl;
         }
       }
 
-      cout << "Found Vehicle " << s-mS << "m ahead" << endl;
+      cout << "Found Vehicle " << sensor_fusion[i][0] << " " << s-mS << "m ahead" << endl;
+      cout << endl;
       found_vehicle = true;
       rVehicle.mX = sensor_fusion[i][1];
       rVehicle.mY = sensor_fusion[i][2];
@@ -345,19 +403,24 @@ bool Vehicle::get_vehicle_ahead(vector<vector<double>> sensor_fusion, Vehicle & 
       rVehicle.mD = d;
 
       // X and Y prediction assumes vehicles are moving in same direction
-      rVehicle.mPredictionX = sensor_fusion[i][1] + velocity * predictionTime;
-      rVehicle.mPredictionY = sensor_fusion[i][2] + velocity * predictionTime;
+      rVehicle.mPredictionX = sensor_fusion[i][1] + sensor_fusion[i][3] * predictionTime;
+      rVehicle.mPredictionY = sensor_fusion[i][2] + sensor_fusion[i][4] * predictionTime;
       rVehicle.mYaw = atan2(rVehicle.mPredictionX - rVehicle.mX, rVehicle.mPredictionY - rVehicle.mY); // Don't have but want to put  value
       rVehicle.mPredictionYaw = rVehicle.mYaw;
 
-      rVehicle.mPredictionVelocity = mVelocity; // Don't have acceleration could technically get
-      rVehicle.mPredictionS = velocity * predictionTime + mS;
-
-      rVehicle.mS = s + rVehicle.mVelocity * predictionTime;
-
+      rVehicle.mPredictionVelocity = mVelocity; // Don't have acceleration could technically get it by keeping track of cars
+      rVehicle.mPredictionS = velocity * predictionTime + s;
     }
   }
   return found_vehicle;
+}
+
+//TODO create a calculate kinematics for both the target vehicle and the in front vehicle
+
+//TODO change implementation
+void Vehicle::getSideLaneGaps(vector<vector<double>> sensor_fusion)
+{
+
 }
 
 //

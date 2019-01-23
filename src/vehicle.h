@@ -51,7 +51,7 @@ public:
 
   Vehicle(float targetSpeed, float goalLane, float minFollowDistance,
                vector<double> &map_waypoints_s, vector<double> &map_waypoints_x, vector<double> &map_waypoints_y,
-               float laneWidth = 4, float maxLane = 12, float minLane = 0, float maxAccel = 10,
+               float laneWidth = 4, float maxLane = 12, float minLane = 0, float maxAccel = 7,
                float timeStep = 0.02, int numTimeStepsToPredict = 25);
 
   /**
@@ -61,6 +61,12 @@ public:
 
   void UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s,
                                double car_x, double car_y, double car_s, double car_d, double car_yaw, double Velocity);
+
+  double getLocationPrediction(double predictionTime);
+
+  vector<double> getLeftGap(vector<vector<double>> sensor_fusion);
+
+  void getSideLaneGaps(vector<vector<double>> sensor_fusion);
 
   points getPredictedPath(vector<vector<double>> sensor_fusion);
 
