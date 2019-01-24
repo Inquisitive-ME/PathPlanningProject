@@ -11,6 +11,9 @@
 #include <map>
 #include <string>
 
+#include "Eigen-3.3/Eigen/Dense"
+
+
 using namespace std;
 
 constexpr double pi() { return M_PI; }
@@ -59,12 +62,12 @@ public:
   */
   virtual ~Vehicle();
 
-  void UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s,
+  void UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s, double end_path_d,
                                double car_x, double car_y, double car_s, double car_d, double car_yaw, double Velocity);
 
   double getLocationPrediction(double predictionTime);
 
-  vector<double> getLeftGap(vector<vector<double>> sensor_fusion);
+ bool getLeftGap(vector<vector<double>> sensor_fusion, double& leftGapCenter, double& leftLaneGapVelocity);
 
   void getSideLaneGaps(vector<vector<double>> sensor_fusion);
 
@@ -146,5 +149,9 @@ private:
 
 
 };
+
+
+vector<double> JMT(vector< double> start, vector <double> end, double T);
+double getJMTValue(vector<double> jmt, double t);
 
 #endif

@@ -219,7 +219,7 @@ int main() {
           	json msgJson;
 
 
-            myCar.UpdateFromPath(previous_path_x, previous_path_y, end_path_s, car_x, car_y, car_s, car_d, car_yaw, car_speed);
+            myCar.UpdateFromPath(previous_path_x, previous_path_y, end_path_s, end_path_d, car_x, car_y, car_s, car_d, car_yaw, car_speed);
 
             points SendPoints;
             // TODO just add previous points here

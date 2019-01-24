@@ -93,7 +93,7 @@ Vehicle::Vehicle(float targetSpeed, float goalLane, float minFollowDistance, vec
 }
 
 
-void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s,
+void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s, double end_path_d,
                              double car_x, double car_y, double car_s, double car_d, double car_yaw, double Velocity)
 {
   static unsigned int counter = 0;
@@ -132,6 +132,7 @@ void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> prev
     mPredictionYaw = atan2(mPredictionY - mY, mPredictionX - mX);
     mPredictionVelocity = mVelocity + mA * mTimeStep;
     mPredictionS = mVelocity * mTimeStep + mS;
+    mPredictionD = mD;
 
     // use cars position and get two previous points tangent to the car
     double prev_car_x = car_x - cos(mYaw) * mVelocity * mTimeStep;
@@ -150,6 +151,7 @@ void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> prev
     mX = car_x;
     mY = car_y;
     mS = car_s;
+    mD = car_d;
     mYaw = deg2rad(car_yaw);
     mA = (mVelocity - Velocity)/mTimeStep;
     mVelocity = Velocity;
@@ -180,6 +182,7 @@ void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> prev
 
     // set car_s because we are adding previous path so want to start prediction after these values
     mPredictionS = end_path_s;
+    mPredictionD = end_path_d;
   }
 
   for(int i =0; i< prevPathLength; i++)
@@ -210,14 +213,12 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
     // reduce to 90% of the other vehicles speed until we are outside of unsafe driving distance.
     if(inFrontVehicle.mS <= mMinFollowDistance_m + mS)
     {
-      cout << endl << "Left Lane gap of " << getLeftGap(sensor_fusion)[0] << "m" << endl << endl;
       mTargetSpeed_mps = inFrontVehicle.mVelocity * 0.9;
     }
     // Check if we will collide
     else if(inFrontVehicle.getLocationPrediction(mFuturePredictionTimeSteps * mTimeStep)
         <= getLocationPrediction(mFuturePredictionTimeSteps*mTimeStep) + mMinFollowDistance_m)
     {
-      cout << endl << "Left Lane gap of " << getLeftGap(sensor_fusion)[0] << "m" << endl << endl;
       // Will get within unsafe following distance
       mTargetSpeed_mps = inFrontVehicle.mVelocity;
       // cout << "Slowing Down TargetSpeed = " << mTargetSpeed_mps << " mps" << endl;
@@ -237,16 +238,59 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
       }
     }
   }
-
-  // Stay Straight
-  //This would only be for straight paths
-  // in Frenet add evenly 30m spaced points ahead of the starting referecne this smooths out predicted spline
-
-  for(int i = 1; i <= 5; i++)
+  double leftLaneGapCenter = 0;
+  double leftLaneGapCenterVelocity = 0;
+  if(!getLeftGap(sensor_fusion, leftLaneGapCenter, leftLaneGapCenterVelocity) && mD > 5.5 && mVelocity > 10)
   {
-    vector<double> next_wp = getXY(mPredictionS+20*i, (2+4*mDesiredLane),mmap_waypoints_s, mmap_waypoints_x, mmap_waypoints_y);
-    mPredictedPath_x.push_back(next_wp[0]);
-    mPredictedPath_y.push_back(next_wp[1]);
+    cout << endl << "CHANGING LANE" << endl << endl;
+    mNumTimeStepsToPredict = 1/mTimeStep;
+    mDesiredLane = 0;
+
+    /*
+    vector<double> startS {mPredictionS, mPredictionVelocity, mPredictionAcceleration};
+    vector<double> startD {mPredictionD, 0, 0};
+    vector<double> endS {leftLaneGapCenter + mPredictionVelocity * mNumTimeStepsToPredict * mTimeStep, mGoalSpeed_mps, mPredictionAcceleration};
+    vector<double> endD {10, 0, 0};
+
+    vector<double> SJMT = JMT(startS, endS, mNumTimeStepsToPredict*mTimeStep);
+    vector<double> DJMT = JMT(startD, endD, mNumTimeStepsToPredict*mTimeStep);
+
+    for (double i = .5; i <= 4; i=i+.1)
+    {
+      vector<double> next_wp = getXY(getJMTValue(SJMT, i), getJMTValue(DJMT,i), mmap_waypoints_s, mmap_waypoints_x,
+                                     mmap_waypoints_y);
+      mPredictedPath_x.push_back(next_wp[0]);
+      mPredictedPath_y.push_back(next_wp[1]);
+    }
+     */
+    for (double i = 1; i <= 5; i++)
+    {
+      cout << "mD = " << mD << endl;
+      cout << "((2+4*mDesiredLane) = " << ((2+4*mDesiredLane)) << endl;
+      cout <<  mPredictionD + ((2+4*mDesiredLane) - mPredictionD) * i/5 << endl;
+
+      vector<double> next_wp = getXY(mPredictionS + 10 * i, mPredictionD + ((2+4*mDesiredLane) - mPredictionD) * i/5, mmap_waypoints_s, mmap_waypoints_x,
+                                     mmap_waypoints_y);
+      mPredictedPath_x.push_back(next_wp[0]);
+      mPredictedPath_y.push_back(next_wp[1]);
+    }
+
+  }
+  else
+  {
+    mNumTimeStepsToPredict = 20;
+
+    // Stay Straight
+    //This would only be for straight paths
+    // in Frenet add evenly 30m spaced points ahead of the starting referecne this smooths out predicted spline
+
+    for (int i = 1; i <= 5; i++)
+    {
+      vector<double> next_wp = getXY(mPredictionS + 20 * i, (2 + 4 * mDesiredLane), mmap_waypoints_s, mmap_waypoints_x,
+                                     mmap_waypoints_y);
+      mPredictedPath_x.push_back(next_wp[0]);
+      mPredictedPath_y.push_back(next_wp[1]);
+    }
   }
 
   for (int i = 0; i < mPredictedPath_x.size(); i++)
@@ -254,8 +298,10 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
     double shift_x = mPredictedPath_x[i] - mPredictionX;
     double shift_y = mPredictedPath_y[i] - mPredictionY;
 
-    mPredictedPath_x[i] = (shift_x * cos(0-mPredictionYaw) - shift_y*sin(0-mPredictionYaw));
-    mPredictedPath_y[i] = (shift_x * sin(0-mPredictionYaw) + shift_y*cos(0-mPredictionYaw));
+    mPredictedPath_x[i] = (shift_x * cos(0 - mPredictionYaw) - shift_y * sin(0 - mPredictionYaw));
+    mPredictedPath_y[i] = (shift_x * sin(0 - mPredictionYaw) + shift_y * cos(0 - mPredictionYaw));
+
+    //cout << "Point " << i << " = (" << mPredictedPath_x[i] << ", " << mPredictedPath_y[i] << ") " << endl;
   }
 
   tk::spline s;
@@ -301,7 +347,7 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
   return mPathPoints;
 }
 
-vector<double> Vehicle::getLeftGap(vector<vector<double>> sensor_fusion)
+bool Vehicle::getLeftGap(vector<vector<double>> sensor_fusion, double& leftGapCenter, double& leftLaneGapVelocity)
 {
 
   double predictionTime = (mNumTimeStepsToPredict - mFuturePredictionTimeSteps) * mTimeStep; // This is the time to the front of the last predicted path
@@ -311,6 +357,9 @@ vector<double> Vehicle::getLeftGap(vector<vector<double>> sensor_fusion)
 
   double distanceClosestCarBehind = -99999;
   double predictedDistanceCarBehind = 0;
+
+  bool carInPath = false;
+  leftLaneGapVelocity = 0;
   // Loop through all Vehicles in sensor_fusion
   // because Udacity doesn't feel this is needed in the code
   // sensor_fusion is
@@ -336,6 +385,10 @@ vector<double> Vehicle::getLeftGap(vector<vector<double>> sensor_fusion)
         {
           distanceClosestCarInFront = carDistance;
           predictedDistanceCarInFront = velocity * predictionTime + s;
+          if((s < mS + 15 && s > mS - 15) || (predictedDistanceCarInFront < mPredictionS +15 && predictedDistanceCarInFront > mPredictionS -15))
+          {
+            carInPath = true;
+          }
         }
       }
       else if (carDistance < 0)
@@ -344,6 +397,11 @@ vector<double> Vehicle::getLeftGap(vector<vector<double>> sensor_fusion)
         {
           distanceClosestCarBehind = carDistance;
           predictedDistanceCarBehind = velocity * predictionTime + s;
+          if((s < mS + 15 && s > mS - 15) || (predictedDistanceCarInFront < mPredictionS +15 && predictedDistanceCarInFront > mPredictionS -15))
+          {
+            carInPath = true;
+          }
+          leftLaneGapVelocity = velocity;
         }
       }
       }
@@ -351,7 +409,8 @@ vector<double> Vehicle::getLeftGap(vector<vector<double>> sensor_fusion)
 
   //TODO handle only getting one car in front or one car behind
   //TODO really need to optimize based on distance of car in front as well
-  return {distanceClosestCarInFront - distanceClosestCarBehind, predictedDistanceCarInFront - predictedDistanceCarBehind};
+  leftGapCenter = predictedDistanceCarInFront - predictedDistanceCarBehind;
+  return {carInPath};
 
 
 
@@ -708,4 +767,62 @@ void Vehicle::updatePosition(double X, double Y, double S, double D, double Yaw,
   mD = D;
   mYaw = Yaw;
   mVelocity = Velocity;
+}
+
+double getJMTValue(vector<double> jmt, double t)
+{
+  return (jmt[0] + jmt[1] * t + jmt[2] * pow(t,2) + jmt[3] * pow(t,3) + jmt[4] * pow(t,4) + jmt[5] * pow(t,5));
+}
+
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
+vector<double> JMT(vector< double> start, vector <double> end, double T)
+{
+  /*
+  Calculate the Jerk Minimizing Trajectory that connects the initial state
+  to the final state in time T.
+
+  INPUTS
+
+  start - the vehicles start location given as a length three array
+      corresponding to initial values of [s, s_dot, s_double_dot]
+
+  end   - the desired end state for vehicle. Like "start" this is a
+      length three array.
+
+  T     - The duration, in seconds, over which this maneuver should occur.
+
+  OUTPUT
+  an array of length 6, each value corresponding to a coefficent in the polynomial
+  s(t) = a_0 + a_1 * t + a_2 * t**2 + a_3 * t**3 + a_4 * t**4 + a_5 * t**5
+
+  EXAMPLE
+
+  > JMT( [0, 10, 0], [10, 10, 0], 1)
+  [0.0, 10.0, 0.0, 0.0, 0.0, 0.0]
+  */
+
+  MatrixXd A = MatrixXd(3, 3);
+  A << T*T*T, T*T*T*T, T*T*T*T*T,
+      3*T*T, 4*T*T*T,5*T*T*T*T,
+      6*T, 12*T*T, 20*T*T*T;
+
+  MatrixXd B = MatrixXd(3,1);
+  B << end[0]-(start[0]+start[1]*T+.5*start[2]*T*T),
+      end[1]-(start[1]+start[2]*T),
+      end[2]-start[2];
+
+  MatrixXd Ai = A.inverse();
+
+  MatrixXd C = Ai*B;
+
+  vector <double> result = {start[0], start[1], .5*start[2]};
+  for(int i = 0; i < C.size(); i++)
+  {
+    result.push_back(C.data()[i]);
+  }
+
+  return result;
+
 }
