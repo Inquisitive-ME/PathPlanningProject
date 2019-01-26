@@ -26,30 +26,10 @@ struct points{
 class Vehicle {
 public:
 
-  map<string, int> lane_direction = {{"PLCL", 1}, {"LCL", 1}, {"LCR", -1}, {"PLCR", -1}};
-
-  struct collider{
-
-    bool collision ; // is there a collision?
-    int  time; // time collision happens
-
-  };
-
-  int L = 1;
-
-  int preferred_buffer = 6; // impacts "keep lane" behavior.
-
-  int lane;
-
-  float a;
-
-  int lanes_available;
-
-  string state;
-
   /**
   * Constructor
   */
+
   Vehicle();
 
   Vehicle(float targetSpeed, float goalLane, float minFollowDistance,
@@ -78,33 +58,13 @@ public:
 
   void updatePosition(double X, double Y, double S, double D, double Yaw, double Velocity);
 
-  vector<Vehicle> choose_next_state(map<int, vector<Vehicle>> predictions);
-
-  vector<string> successor_states();
-
-  vector<Vehicle> generate_trajectory(string state, map<int, vector<Vehicle>> predictions);
-
   vector<float> get_kinematics(map<int, vector<Vehicle>> predictions, int lane);
-
-  vector<Vehicle> constant_speed_trajectory();
 
   vector<Vehicle> keep_lane_trajectory(map<int, vector<Vehicle>> predictions);
 
-  vector<Vehicle> lane_change_trajectory(string state, map<int, vector<Vehicle>> predictions);
 
-  vector<Vehicle> prep_lane_change_trajectory(string state, map<int, vector<Vehicle>> predictions);
-
-  void increment(int dt);
-
-  float position_at(int t);
-
-  bool get_vehicle_behind(map<int, vector<Vehicle>> predictions, int lane, Vehicle & rVehicle);
-
-  bool get_vehicle_ahead(vector<vector<double>> sensor_fusion, Vehicle & rVehicle);
-
-  vector<Vehicle> generate_predictions(int horizon=2);
-
-  void realize_next_state(vector<Vehicle> trajectory);
+  bool get_vehicle_ahead_inLane(vector<vector<double>> sensor_fusion, double lane, Vehicle & rVehicle);
+  bool get_vehicle_behind_inLane(vector<vector<double>> sensor_fusion, double lane, Vehicle & rVehicle);
 
 
 private:
@@ -113,7 +73,7 @@ private:
   //TODO Use these
   float mMaxLane;
   float mMinLane;
-  float mLaneWidth;
+  float mLaneWidth_m;
   float mDesiredLane;
   float mMaxAcceleration_mpss;
   float mMinFollowDistance_m;
@@ -132,7 +92,7 @@ private:
   double mVelocity;
   double mAcceleration;
 
-  // Vehicles predicted localization Data
+  // Vehicles location at the end of the current path
   double mEndOfCurrentPathX;
   double mEndOfCurrentPathY;
   double mEndOfCurrentPathS;
@@ -140,7 +100,9 @@ private:
   double mEndOfCurrentPathYaw;
   double mEndOfCurrentPathVelocity;
   double mEndOfCurrentPathAcceleration;
-  int mFuturePredictionTimeSteps;
+
+  // Vehicles location at
+  int mPrevPathLength;
 
   points mPathPoints;
   vector<double> mmap_waypoints_x;
