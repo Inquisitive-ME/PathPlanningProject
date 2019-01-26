@@ -130,16 +130,16 @@ private:
   double mD;
   double mYaw;
   double mVelocity;
-  double mA;
+  double mAcceleration;
 
   // Vehicles predicted localization Data
-  double mPredictionX;
-  double mPredictionY;
-  double mPredictionS;
-  double mPredictionD;
-  double mPredictionYaw;
-  double mPredictionVelocity;
-  double mPredictionAcceleration;
+  double mEndOfCurrentPathX;
+  double mEndOfCurrentPathY;
+  double mEndOfCurrentPathS;
+  double mEndOfCurrentPathD;
+  double mEndOfCurrentPathYaw;
+  double mEndOfCurrentPathVelocity;
+  double mEndOfCurrentPathAcceleration;
   int mFuturePredictionTimeSteps;
 
   points mPathPoints;
