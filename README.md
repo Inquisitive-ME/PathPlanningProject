@@ -92,6 +92,17 @@ for the car in front, so the safety distance needs to be a certain length or we 
 velocity. I added in logic to go 90% of the speed of the car in front of us if we are in the unsafe zone to prevent collisions
 There are currently no safety procedures implemented if we would have to exceed the comfortable acceleration to prevent
 a collision.
+
+### Jerk Minimizing Functions
+I tried very hard to implement jerk minimizing functions into this path planner. But I was not able to find an elegant
+way to do it. The main issue is that jerk minimizing functions must control the velocity in order to minimize the jerk.
+In the simulator the only way to control velocity is through the spacing of the points and the conversion from s d to x y
+coordinates had discontinuities. So the simulator inherently made it extremely difficult to use the functions. The most
+elegant way I found was to create a jerk minimized function and create a spline with it at larger spacings to attempt to
+ remove the discontinuities and then try to resample the spline given the known velocities. This however still had 
+ issues as resembling either introduced back the discontinuities or removed the velocity control from the function.
+  I didn't feel it was worth getting more complicated cause the main issue of having to space the points to get desired velocity
+  doesn't not seem very usefull to spend a ton of time finding a solution for.
  
 
 ---

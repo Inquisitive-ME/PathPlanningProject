@@ -65,7 +65,7 @@ Vehicle::Vehicle(){
   mDesiredLane = 0;
   mMinFollowDistance_m = 0;
 
-  mMaxLane = 0;
+  mMaxLaneMerge_m = 0;
   mMinLane = 0;
   mMaxAcceleration_mpss = 0;
   mTimeStep = 0;
@@ -73,7 +73,7 @@ Vehicle::Vehicle(){
 
 }
 Vehicle::Vehicle(float targetSpeed, float goalLane, float minFollowDistance, vector<double> &map_waypoints_s,
-                 vector<double> &map_waypoints_x, vector<double> &map_waypoints_y, float laneWidth, float maxLane,
+                 vector<double> &map_waypoints_x, vector<double> &map_waypoints_y, float laneWidth, double maxLane,
                  float minLane, float maxAccel, float timeStep, int numTimeStepsToPredict)
 {
 
@@ -84,7 +84,7 @@ Vehicle::Vehicle(float targetSpeed, float goalLane, float minFollowDistance, vec
   mmap_waypoints_s = map_waypoints_s;
   mmap_waypoints_x = map_waypoints_x;
   mmap_waypoints_y = map_waypoints_y;
-  mMaxLane = maxLane;
+  mMaxLaneMerge_m = maxLane;
   mLaneWidth_m = laneWidth;
   mMinLane = minLane;
   mMaxAcceleration_mpss = maxAccel;
@@ -96,6 +96,7 @@ Vehicle::Vehicle(float targetSpeed, float goalLane, float minFollowDistance, vec
 void Vehicle::UpdateFromPath(vector<double> previous_path_x, vector<double> previous_path_y, double end_path_s, double end_path_d,
                              double car_x, double car_y, double car_s, double car_d, double car_yaw, double Velocity)
 {
+  Velocity = Velocity * 0.44704; // Convert to mps
   static unsigned int counter = 0;
   cout << " Update from Path number " << counter << endl;
   counter++;
@@ -237,27 +238,30 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
   }
   double leftLaneGapCenter = 0;
   double leftLaneGapCenterVelocity = 0;
-  if(getLeftGap(sensor_fusion, leftLaneGapCenter, leftLaneGapCenterVelocity) && mEndOfCurrentPathD > 5.5 && (mTargetSpeed_mps < mGoalSpeed_mps || mVelocity > 30))
+  if(getLeftGap(sensor_fusion, leftLaneGapCenter, leftLaneGapCenterVelocity) && mEndOfCurrentPathD > 5.5 && mVelocity > 20)
   {
+    mPredictedPath_y.clear();
+    mPredictedPath_x.clear();
     cout << endl << "CHANGING LANE" << endl << endl;
     double laneChangeTime_s = mNumTimeStepsToPredict * mTimeStep;
-    // double distance = mEndOfCurrentPathVelocity * laneChangeTime_s;
-    // mNumTimeStepsToPredict = laneChangeTime_s / mTimeStep;
+    cout << "Lane change  time = " << laneChangeTime_s << " s Distance = " << leftLaneGapCenter << " m" <<endl;
+    double distance = leftLaneGapCenter;
+    //mNumTimeStepsToPredict = laneChangeTime_s / mTimeStep;
 
     mDesiredLane = 0;
 
-    vector<double> startS{mEndOfCurrentPathS, mEndOfCurrentPathVelocity, mEndOfCurrentPathAcceleration};
+    vector<double> startS{mEndOfCurrentPathS, mEndOfCurrentPathVelocity, 0};
     vector<double> startD{mEndOfCurrentPathD, 0, 0};
     //vector<double> endS {leftLaneGapCenter + mEndOfCurrentPathVelocity * mNumTimeStepsToPredict * mTimeStep, mGoalSpeed_mps, 0};
 
     //vector<double> endS{mEndOfCurrentPathS + distance,  min(mEndOfCurrentPathVelocity +mMaxAcceleration_mpss * laneChangeTime_s,(double) mGoalSpeed_mps), 0};
-    vector<double> endS{mEndOfCurrentPathS + leftLaneGapCenter, mEndOfCurrentPathVelocity + mMaxAcceleration_mpss * mTimeStep, 0};
+    vector<double> endS{mEndOfCurrentPathS + distance, mEndOfCurrentPathVelocity, 0};
     vector<double> endD{2 + mDesiredLane, 0, 0};
 
     vector<double> SJMT = JMT(startS, endS, laneChangeTime_s);
     vector<double> DJMT = JMT(startD, endD, laneChangeTime_s);
 
-    for (double i = mTimeStep; i <= laneChangeTime_s; i = i + mTimeStep*5)
+    for (double i = mTimeStep; i < laneChangeTime_s; i = i + mTimeStep)
     {
       cout << "i = " << i << " S = " << getJMTValue(SJMT, i) << " D = " << getJMTValue(DJMT, i) << endl;
       vector<double> next_wp = getXY(getJMTValue(SJMT, i), getJMTValue(DJMT, i), mmap_waypoints_s, mmap_waypoints_x,
@@ -269,6 +273,79 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
 
       //mTargetSpeed_mps = mGoalSpeed_mps;
     }
+    cout << endl;
+    cout << "before " << endl;
+    for(int i =0; i < mPredictedPath_x.size()-1; i++)
+    {
+      cout << mPredictedPath_x[i] << ", " << mPredictedPath_y[i] << endl;
+    }
+    cout << endl;
+
+    cout << endl;
+    for(int i =0; i < mPredictedPath_x.size(); i++)
+    {
+      cout << mPredictedPath_x[i] << ", " << mPredictedPath_y[i] << endl;
+      cout << "mPathPoints size " << mPathPoints.x.size() << endl;
+      if(i>1)
+      {
+        if (sqrt(pow(mPredictedPath_x[i] - mPredictedPath_x[i - 1], 2) +
+                 pow(mPredictedPath_y[i] - mPredictedPath_y[i - 1], 2)) > mEndOfCurrentPathVelocity * mTimeStep * 1.2)
+        {
+          cout << "Gap in Path Points" << endl;
+          cout << "Push Back x = " << mPredictedPath_x[i - 1] + mPredictedPath_x[i - 1] - mPredictedPath_x[i - 2]
+               << endl;
+          cout << "Push Back Y = " << mPredictedPath_y[i - 1] + mPredictedPath_y[i - 1] - mPredictedPath_y[i - 2]
+               << endl;
+          mPathPoints.x.push_back(mPredictedPath_x[i - 1] + mPredictedPath_x[i - 1] - mPredictedPath_x[i - 2]);
+          mPathPoints.y.push_back(mPredictedPath_y[i - 1] + mPredictedPath_y[i - 1] - mPredictedPath_y[i - 2]);
+          double length = mPathPoints.x.size();
+          for (int j = i + 1; j < mPredictedPath_x.size() - 1; j++)
+          {
+            mPathPoints.x.push_back(mPathPoints.x[mPathPoints.x.size() - 1] + mPredictedPath_x[j+1] - mPredictedPath_x[j]);
+            mPathPoints.y.push_back(mPathPoints.y[mPathPoints.y.size() - 1] + mPredictedPath_y[j+1] - mPredictedPath_y[j]);
+          }
+          mPredictedPath_x.clear();
+          mPredictedPath_y.clear();
+          for(int k = mPrevPathLength; k < mPathPoints.x.size(); k++)
+          {
+            mPredictedPath_x.push_back(mPathPoints.x[k]);
+            mPredictedPath_y.push_back(mPathPoints.y[k]);
+          }
+          mPathPoints.x.erase(mPathPoints.x.begin()+length,mPathPoints.x.end());
+          mPathPoints.y.erase(mPathPoints.y.begin()+length, mPathPoints.y.end());
+        }
+        else if (sqrt(pow(mPredictedPath_x[i] - mPredictedPath_x[i - 1], 2) +
+                      pow(mPredictedPath_y[i] - mPredictedPath_y[i - 1], 2)) < mEndOfCurrentPathVelocity * mTimeStep * 0.8)
+        {
+          cout << "Gap in Path too small" << endl;
+
+        }
+        else
+        {
+          mPathPoints.x.push_back(mPredictedPath_x[i]);
+          mPathPoints.y.push_back(mPredictedPath_y[i]);
+        }
+      }
+        else
+        {
+          mPathPoints.x.push_back(mPredictedPath_x[i]);
+          mPathPoints.y.push_back(mPredictedPath_y[i]);
+        }
+//
+//          cout << "Gap in Path Points" << endl;
+//          cout << "Insert X " << mPathPoints.x[i-1] + (mPathPoints.x[i] - mPathPoints.x[i-1])/2 << endl;
+//          cout << "Insert Y " << mPathPoints.y[i-1] + (mPathPoints.y[i] - mPathPoints.y[i-1])/2 << endl;
+//          mPathPoints.x.insert(mPathPoints.x.begin()+i, mPathPoints.x[i-1] + (mPathPoints.x[i] - mPathPoints.x[i-1])/2);
+//          mPathPoints.y.insert(mPathPoints.y.begin()+i, mPathPoints.y[i-1] + (mPathPoints.y[i] - mPathPoints.y[i-1])/2);
+          //i++;
+
+      }
+    cout << endl;
+    for(int i =0; i < mPathPoints.x.size(); i++)
+    {
+      cout << mPathPoints.x[i] << ", " << mPathPoints.y[i] << endl;
+    }
+    cout << endl;
 
     /*
     cout << endl;
@@ -304,14 +381,13 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
 */
     tk::spline s;
 
-    s.set_points(mPredictedPath_x, mPredictedPath_y);
-
-    mPathPoints.x.push_back(mEndOfCurrentPathX);
-    mPathPoints.y.push_back(s(mEndOfCurrentPathX));
+    //s.set_points(mPredictedPath_x, mPredictedPath_y);
 
     double x_add_on = 0;
     //predict out .5 s
-    for (int i = 0; i < mNumTimeStepsToPredict-1; i++)
+    // TODO this should be going to a distance
+    while(x_add_on < distance)
+    //for (int i =1; i < mPredictedPath_x.size(); i++)
     {
 /*
       if (mEndOfCurrentPathVelocity < mTargetSpeed_mps)
@@ -333,18 +409,18 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
 
       x_point += mEndOfCurrentPathX;
 
-      double y_point = s(x_point);
+      //double y_point = s(x_point);
 
-      cout << x_point << ", " << y_point << endl;
-      mPathPoints.x.push_back(x_point);
-      mPathPoints.y.push_back(y_point);
+      //cout << x_point << ", " << y_point << endl;
+      //mPathPoints.x.push_back(x_point);
+      //mPathPoints.y.push_back(y_point);
     }
 
   }
 
   else
   {
-    mNumTimeStepsToPredict = 20;
+    //mNumTimeStepsToPredict = 25;
 
 
     // Stay Straight
@@ -353,7 +429,7 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
 
     for (int i = 1; i <= 5; i++)
     {
-      vector<double> next_wp = getXY(mEndOfCurrentPathS + 20 * i, (2 + 4 * mDesiredLane), mmap_waypoints_s,
+      vector<double> next_wp = getXY(mEndOfCurrentPathS + 20 * i, mD + ((2 + 4 * mDesiredLane) - mD)*i/5, mmap_waypoints_s,
                                      mmap_waypoints_x,
                                      mmap_waypoints_y);
       mPredictedPath_x.push_back(next_wp[0]);
@@ -415,10 +491,11 @@ points Vehicle::getPredictedPath(vector<vector<double>> sensor_fusion)
       mPathPoints.y.push_back(y_point);
 
     }
+    mNumTimeStepsToPredict = 25;
   }
   cout << endl;
 
-  mNumTimeStepsToPredict = 20;
+  //mNumTimeStepsToPredict = 25;
   return mPathPoints;
 }
 
@@ -429,11 +506,7 @@ bool Vehicle::getLeftGap(vector<vector<double>> sensor_fusion, double& leftGapCe
   // TODO rename prediction it really means end of current path
   double predictionTime = mPrevPathLength * mTimeStep; // This is the time to the front of the last predicted path
 
-  double distanceClosestCarInFront = 99999;
-  double predictedDistanceCarInFront = 0;
-
-  double distanceClosestCarBehind = -99999;
-  double predictedDistanceCarBehind = 0;
+  double EndOfPathDistanceCarInFront = 0;
 
   bool carInPath = false;
   leftLaneGapVelocity = 0;
@@ -451,92 +524,127 @@ bool Vehicle::getLeftGap(vector<vector<double>> sensor_fusion, double& leftGapCe
   Vehicle leftVehicleAhead;
   Vehicle leftVehicleBehind;
   bool leftLaneOpen;
-  bool vehicleBehind;
+
+  if (get_vehicle_ahead_inLane(sensor_fusion, mD - 4, leftVehicleAhead))
+  {
+    cout << "Vehicle Ahead in Left Lane " << leftVehicleAhead.mEndOfCurrentPathS - mEndOfCurrentPathS << " m" << endl;
+    // How far in front at end of path
+    EndOfPathDistanceCarInFront = min(leftVehicleAhead.mEndOfCurrentPathS - mEndOfCurrentPathS,
+                                      mMaxLaneMerge_m);
+
+    if (EndOfPathDistanceCarInFront <= mMinFollowDistance_m)
+    {
+      cout << " Left Lane Vehicle in Front Too Close " << endl;
+      return false;
+    }
+    else
+    {
+      mNumTimeStepsToPredict = ((EndOfPathDistanceCarInFront / (mEndOfCurrentPathVelocity)) / mTimeStep);
+      if (mNumTimeStepsToPredict * mTimeStep * leftVehicleAhead.mEndOfCurrentPathVelocity +
+          leftVehicleAhead.mEndOfCurrentPathS - mMinFollowDistance_m <=
+          mEndOfCurrentPathS + mEndOfCurrentPathVelocity * mNumTimeStepsToPredict * mTimeStep)
+      {
+        cout << "Predicting would hit vehicle Ahead" << endl;
+        return false;
+      }
+    }
+  }
+  else
+  {
+    cout << "No Vehicle Ahead" << endl;
+    EndOfPathDistanceCarInFront = mMaxLaneMerge_m;
+    mNumTimeStepsToPredict = ((EndOfPathDistanceCarInFront / (mEndOfCurrentPathVelocity)) / mTimeStep);
+  }
 
 
+  // Car is within Minimum Following Distance
   if(get_vehicle_behind_inLane(sensor_fusion, mD - 4, leftVehicleBehind))
   {
-    if(leftVehicleBehind.mEndOfCurrentPathS + mMinFollowDistance_m >= mEndOfCurrentPathS)
+    cout << "Vehicle Behind in left lane " << leftVehicleBehind.mEndOfCurrentPathS - mEndOfCurrentPathS << " m" << endl;
+    if (leftVehicleBehind.mEndOfCurrentPathS + mMinFollowDistance_m >= mEndOfCurrentPathS)
     {
+      cout << " Vehicle Behind TOO Close" << endl;
       return false; // can't merge
     }
     else
     {
-      vehicleBehind = true;
-    }
-  }
-  if (get_vehicle_ahead_inLane(sensor_fusion, mD - 4, leftVehicleAhead))
-  {
-    predictedDistanceCarInFront = leftVehicleAhead.mEndOfCurrentPathS - mMinFollowDistance_m - mEndOfCurrentPathS;
-
-    if(predictedDistanceCarInFront >= 0)
-    {
-      // Not accelerating during lane change
-      mNumTimeStepsToPredict = (predictedDistanceCarInFront / (mEndOfCurrentPathVelocity)) / mTimeStep;
-      if(vehicleBehind)
+      if (leftVehicleBehind.mEndOfCurrentPathS + mMinFollowDistance_m +
+          mNumTimeStepsToPredict * mTimeStep * leftVehicleBehind.mEndOfCurrentPathVelocity >=
+          mEndOfCurrentPathS + mEndOfCurrentPathVelocity * mNumTimeStepsToPredict * mTimeStep)
       {
-        if(leftVehicleBehind.mEndOfCurrentPathS + mMinFollowDistance_m + mNumTimeStepsToPredict * mTimeStep * leftVehicleBehind.mEndOfCurrentPathVelocity >=
-            mEndOfCurrentPathS + mEndOfCurrentPathVelocity * mNumTimeStepsToPredict * mTimeStep)
-        {
-          return false;
-        }
-        else
-        {
-          leftGapCenter = predictedDistanceCarInFront - mMinFollowDistance_m;
-          return true;
-        }
+        cout << "Vehicle Behind prediction " << (leftVehicleBehind.mEndOfCurrentPathS + mMinFollowDistance_m +
+                                                 mNumTimeStepsToPredict * mTimeStep *
+                                                 leftVehicleBehind.mEndOfCurrentPathVelocity) -
+                                                (mEndOfCurrentPathS +
+                                                 mEndOfCurrentPathVelocity * mNumTimeStepsToPredict * mTimeStep) << " m"
+             << endl;
+        cout << "leftVehicleBehind.mEndOfCurrentPathS = " << leftVehicleBehind.mEndOfCurrentPathS << endl;
+        cout << "mEndofCurrentPathS = " << mEndOfCurrentPathS << endl;
+        cout << "mMinFollowDistance_m = " << mMinFollowDistance_m << endl;
+        cout << "mNumTimeStepsToPredict = " << mNumTimeStepsToPredict << endl;
+        cout << " mTimeStep = " << mTimeStep << endl;
+        cout << " leftVehicleBehind.mEndOfCurrentPathVelocity " << leftVehicleBehind.mEndOfCurrentPathVelocity << endl;
+        cout << " mEndOfCurrentPathVelocity = " << mEndOfCurrentPathVelocity << endl;
+        cout << "Predicting would hit vehicle behind " << endl;
+        return false;
+      }
+      else
+      {
+        leftGapCenter = EndOfPathDistanceCarInFront;
+        return true;
       }
     }
-    else
-    {
-      return false;
-    }
   }
-  return false;
+  else
+  {
+    cout << "No Vehicle Behind" << endl;
+    leftGapCenter = EndOfPathDistanceCarInFront;
+    return true;
+  }
 /*
 
-  for (int i =0; i < sensor_fusion.size(); i++)
+for (int i =0; i < sensor_fusion.size(); i++)
+{
+float d = sensor_fusion[i][6];
+float s = sensor_fusion[i][5];
+if( (d < (mD - 4 + mLaneWidth_m/2)) && (d> (mD - 4 - mLaneWidth_m/2)) && (s < mS +200) && (s > mS - 200))
+{
+  double velocity = sqrt(pow(sensor_fusion[i][3], 2) + pow(sensor_fusion[i][4], 2));
+  double carDistance = s-mS;
+  if (carDistance > 0)
   {
-    float d = sensor_fusion[i][6];
-    float s = sensor_fusion[i][5];
-    if( (d < (mD - 4 + mLaneWidth_m/2)) && (d> (mD - 4 - mLaneWidth_m/2)) && (s < mS +200) && (s > mS - 200))
+    if(distanceClosestCarInFront > carDistance)
     {
-      double velocity = sqrt(pow(sensor_fusion[i][3], 2) + pow(sensor_fusion[i][4], 2));
-      double carDistance = s-mS;
-      if (carDistance > 0)
+      distanceClosestCarInFront = carDistance;
+      predictedDistanceCarInFront = velocity * predictionTime + s;
+      if((s < mS + 15 && s > mS - 15) || (predictedDistanceCarInFront < mEndOfCurrentPathS +15 && predictedDistanceCarInFront > mEndOfCurrentPathS -15))
       {
-        if(distanceClosestCarInFront > carDistance)
-        {
-          distanceClosestCarInFront = carDistance;
-          predictedDistanceCarInFront = velocity * predictionTime + s;
-          if((s < mS + 15 && s > mS - 15) || (predictedDistanceCarInFront < mEndOfCurrentPathS +15 && predictedDistanceCarInFront > mEndOfCurrentPathS -15))
-          {
-            carInPath = true;
-          }
-        }
-      }
-      else if (carDistance < 0)
-      {
-        if(distanceClosestCarBehind < carDistance)
-        {
-          distanceClosestCarBehind = carDistance;
-          predictedDistanceCarBehind = velocity * predictionTime + s;
-          if((s < mS + 15 && s > mS - 15) || (predictedDistanceCarInFront < mEndOfCurrentPathS +15 && predictedDistanceCarInFront > mEndOfCurrentPathS -15))
-          {
-            carInPath = true;
-          }
-          leftLaneGapVelocity = velocity;
-        }
-      }
+        carInPath = true;
       }
     }
+  }
+  else if (carDistance < 0)
+  {
+    if(distanceClosestCarBehind < carDistance)
+    {
+      distanceClosestCarBehind = carDistance;
+      predictedDistanceCarBehind = velocity * predictionTime + s;
+      if((s < mS + 15 && s > mS - 15) || (predictedDistanceCarInFront < mEndOfCurrentPathS +15 && predictedDistanceCarInFront > mEndOfCurrentPathS -15))
+      {
+        carInPath = true;
+      }
+      leftLaneGapVelocity = velocity;
+    }
+  }
+  }
+}
 
-  //TODO handle only getting one car in front or one car behind
-  //TODO really need to optimize based on distance of car in front as well
-  leftGapCenter = predictedDistanceCarInFront - predictedDistanceCarBehind;
-  cout << "Left Gap = " << leftGapCenter << "m " << endl;
-  return {carInPath};
-  */
+//TODO handle only getting one car in front or one car behind
+//TODO really need to optimize based on distance of car in front as well
+leftGapCenter = predictedDistanceCarInFront - predictedDistanceCarBehind;
+cout << "Left Gap = " << leftGapCenter << "m " << endl;
+return {carInPath};
+*/
 
 
 
@@ -579,7 +687,6 @@ bool Vehicle::get_vehicle_ahead_inLane(vector<vector<double>> sensor_fusion, dou
         }
       }
 
-      cout << "Found Vehicle " << sensor_fusion[i][0] << " " << s-mS << "m ahead" << endl;
       cout << endl;
       found_vehicle = true;
       rVehicle.mX = sensor_fusion[i][1];
@@ -641,7 +748,6 @@ bool Vehicle::get_vehicle_behind_inLane(vector<vector<double>> sensor_fusion, do
         }
       }
 
-      cout << "Found Vehicle " << sensor_fusion[i][0] << " " << s-mS << "m ahead" << endl;
       cout << endl;
       found_vehicle = true;
       rVehicle.mX = sensor_fusion[i][1];

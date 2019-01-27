@@ -34,7 +34,7 @@ public:
 
   Vehicle(float targetSpeed, float goalLane, float minFollowDistance,
                vector<double> &map_waypoints_s, vector<double> &map_waypoints_x, vector<double> &map_waypoints_y,
-               float laneWidth = 4, float maxLane = 12, float minLane = 0, float maxAccel = 7,
+               float laneWidth = 4, double maxLane = 50, float minLane = 0, float maxAccel = 5,
                float timeStep = 0.02, int numTimeStepsToPredict = 25);
 
   /**
@@ -71,7 +71,7 @@ private:
   float mGoalSpeed_mps;
   float mTargetSpeed_mps;
   //TODO Use these
-  float mMaxLane;
+  double mMaxLaneMerge_m;
   float mMinLane;
   float mLaneWidth_m;
   float mDesiredLane;

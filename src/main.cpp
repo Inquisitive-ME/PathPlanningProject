@@ -101,7 +101,7 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  float targetSpeed_mps = 49/2.24;
+  float targetSpeed_mps = 45/2.24;
   float goalLane = 1;
   float minFollowDistance = 15;
 
