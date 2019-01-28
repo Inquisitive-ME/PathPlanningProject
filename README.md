@@ -72,7 +72,7 @@ A really helpful resource for doing this project and creating smooth trajectorie
 #Implementation
 ##General
 Each timestep we get the previous path that has not been followed from the simulator. A difficult concept for
-me was determine what to do with this path. I had troubles trying to create a new path mainly because the car would
+me was determiniing what to do with this path. I had troubles trying to create a new path mainly because the car would
 travel on the previous path during calculations of the new path. Ultimatley I decided it was easiest to just continue 
 using the previous path and start the new calculations from the end of this path. This obviously has issues, for example
 if you sense something in the new timestep that interferes with the previous path then you would not react to it,
@@ -82,28 +82,49 @@ and too far for any real world implementation.
 
 ## Vehicle class
 Created a vehicle class to store the vehicle state. The vehicle class is created with some parameters and then updated
-every time step with the previous path and the current position of the car.
+every time step with the previous path and the current position of the car. The vehicle class also has functions to 
+determine what action to take, find vehicles ahead and behind of the car in a lane, and create paths for staying in the
+current lane or merging lanes.
 
 ## Going straight
 For driving straight, we find the speed of the car in front of us, and predict given our cars speed and the speed of
 the car in front of us weather we will get to an unsafe traveling distance. If we will, then we slow down to the speed
 of the car in front of us. What I found when implementing this is that the siumulator does not give an accurate speed
-for the car in front, so the safety distance needs to be a certain length or we will collide trying to match the in accurate
-velocity. I added in logic to go 90% of the speed of the car in front of us if we are in the unsafe zone to prevent collisions
-There are currently no safety procedures implemented if we would have to exceed the comfortable acceleration to prevent
-a collision.
+for the car in front, so the safety distance needs to be a certain length or we will collide trying to match the velocity
+ of the car in front. I added in logic to go 90% of the speed of the car in front of us if we are in the unsafe zone to 
+prevent collisions There are currently no safety procedures implemented if we would need to exceed the comfortable
+ acceleration to prevent a collision.
 
-### Jerk Minimizing Functions
+### merging
+
+#### Jerk Minimizing Functions
 I tried very hard to implement jerk minimizing functions into this path planner. But I was not able to find an elegant
 way to do it. The main issue is that jerk minimizing functions must control the velocity in order to minimize the jerk.
 In the simulator the only way to control velocity is through the spacing of the points and the conversion from s d to x y
 coordinates had discontinuities. So the simulator inherently made it extremely difficult to use the functions. The most
-elegant way I found was to create a jerk minimized function and create a spline with it at larger spacings to attempt to
- remove the discontinuities and then try to resample the spline given the known velocities. This however still had 
- issues as resembling either introduced back the discontinuities or removed the velocity control from the function.
-  I didn't feel it was worth getting more complicated cause the main issue of having to space the points to get desired velocity
-  doesn't not seem very usefull to spend a ton of time finding a solution for.
- 
+elegant way I found was to create a jerk minimized function and create a spline with the function sampled at larger 
+spacings to attempt to remove the discontinuities and then try to resample the spline given the known velocities.
+This however still had issues as resembling either introduced back the discontinuities or removed the velocity control 
+from the function. I didn't feel it was worth getting more complicated cause the main issue of having to space the points
+ to get desired velocity doesn't not seem very usefull to spend a ton of time finding a solution for.
+  
+#### merging path
+Currently merging is implemented using a minimum and maximum merge time. If there is a car in the other lane the car will
+determine if it can merge into that lane in the minimum merge time and if it will and the plannet tells it to merge it will
+merge if there is not a car then it just uses the max merge time. The path is created by creating a spline from the previous
+path and the point the car reaches the center of the new lane.
+
+### Path Planner
+The path planner is a simple cost function taking into account a goal lane, speed and the distance to cars in ahead and behind
+
+# TODO's
+* Clean up the code
+* better lane changing that allows the vehicle to exit a lane change if another car merges into the lane and also does
+a better job accounting for the distance of the vehicle in the current lane when perfomring the lane change
+* Make the vehicle parameters less speed dependent currently I think a lot of the parameters that can be tuned such as the
+min and max merge time are tuned for highway speeds and may not fairwell if the speed was lowered.
+
+### I think the cost funciton could be improved on
 
 ---
 

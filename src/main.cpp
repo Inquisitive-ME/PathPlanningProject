@@ -102,8 +102,8 @@ int main() {
   }
 
   float targetSpeed_mps = 45/2.24;
-  float goalLane = 1;
-  float minFollowDistance = 15;
+  int goalLane = 1;
+  float minFollowDistance = 20;
 
   Vehicle myCar(targetSpeed_mps, goalLane, minFollowDistance, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
@@ -147,7 +147,6 @@ int main() {
 
           	json msgJson;
 
-
             myCar.UpdateFromPath(previous_path_x, previous_path_y, end_path_s, end_path_d, car_x, car_y, car_s, car_d, car_yaw, car_speed);
 
             points SendPoints;
@@ -156,7 +155,7 @@ int main() {
             vector<double> x_sendPoints;
             vector<double> y_sendPoints;
 
-            SendPoints = myCar.getPredictedPath(sensor_fusion);
+            SendPoints = myCar.getNextAction(sensor_fusion);
             x_sendPoints = SendPoints.x;
             y_sendPoints = SendPoints.y;
 

@@ -32,9 +32,9 @@ public:
 
   Vehicle();
 
-  Vehicle(float targetSpeed, float goalLane, float minFollowDistance,
+  Vehicle(float targetSpeed, int goalLane, float minFollowDistance,
                vector<double> &map_waypoints_s, vector<double> &map_waypoints_x, vector<double> &map_waypoints_y,
-               float laneWidth = 4, double maxLane = 50, float minLane = 0, float maxAccel = 5,
+               float laneWidth = 4, double maxLane = 2.5, float minLane = 1.5, float maxAccel = 5,
                float timeStep = 0.02, int numTimeStepsToPredict = 25);
 
   /**
@@ -60,21 +60,26 @@ public:
 
   vector<float> get_kinematics(map<int, vector<Vehicle>> predictions, int lane);
 
-  vector<Vehicle> keep_lane_trajectory(map<int, vector<Vehicle>> predictions);
+  points stayStraight();
+  points merge(double distanceAhead, int TimeSteps);
+
+  points getNextAction(vector<vector<double>> sensor_fusion);
 
 
   bool get_vehicle_ahead_inLane(vector<vector<double>> sensor_fusion, double lane, Vehicle & rVehicle);
   bool get_vehicle_behind_inLane(vector<vector<double>> sensor_fusion, double lane, Vehicle & rVehicle);
+  bool getLaneInfo(vector<vector<double>> sensor_fusion, double& distanceAhead, double& laneVelocity,  int& timeStepsToDistance, int Lane);
 
 
 private:
   float mGoalSpeed_mps;
   float mTargetSpeed_mps;
   //TODO Use these
-  double mMaxLaneMerge_m;
-  float mMinLane;
+  double mMaxLaneMergeTime_s;
+  float mMinLaneMergeTime_s;
   float mLaneWidth_m;
-  float mDesiredLane;
+  int mDesiredLane;
+  int mGoalLane;
   float mMaxAcceleration_mpss;
   float mMinFollowDistance_m;
   float mTimeStep;
